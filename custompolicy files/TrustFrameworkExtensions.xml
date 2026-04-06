@@ -1,0 +1,164 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<TrustFrameworkPolicy 
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+  xmlns:xsd="http://www.w3.org/2001/XMLSchema" 
+  xmlns="http://schemas.microsoft.com/online/cpim/schemas/2013/06" 
+  PolicySchemaVersion="0.3.0.0" 
+  TenantId="inextlabsb2ctest.onmicrosoft.com" 
+  PolicyId="B2C_1A_TrustFrameworkExtensions" 
+  PublicPolicyUri="http://inextlabsb2ctest.onmicrosoft.com/B2C_1A_TrustFrameworkExtensions">
+  
+  <BasePolicy>
+    <TenantId>inextlabsb2ctest.onmicrosoft.com</TenantId>
+    <PolicyId>B2C_1A_TrustFrameworkLocalization</PolicyId>
+  </BasePolicy>
+ 
+  <BuildingBlocks>
+    <ClaimsSchema>
+      <ClaimType Id="department">
+        <DisplayName>Department</DisplayName>
+        <DataType>string</DataType>
+      </ClaimType>
+      <ClaimType Id="gender">
+        <DisplayName>Gender</DisplayName>
+        <DataType>string</DataType>
+      </ClaimType>
+      <ClaimType Id="dob">
+        <DisplayName>Date of Birth</DisplayName>
+        <DataType>string</DataType>
+      </ClaimType>
+      <ClaimType Id="employeeId">
+        <DisplayName>Employee ID</DisplayName>
+        <DataType>string</DataType>
+      </ClaimType>
+      <ClaimType Id="role">
+        <DisplayName>Role</DisplayName>
+        <DataType>string</DataType>
+      </ClaimType>
+      <ClaimType Id="businessId">
+        <DisplayName>Business ID</DisplayName>
+        <DataType>string</DataType>
+      </ClaimType>
+      <ClaimType Id="tenantId">
+        <DisplayName>Tenant ID</DisplayName>
+        <DataType>string</DataType>
+      </ClaimType>
+    </ClaimsSchema>
+  </BuildingBlocks>
+
+  <ClaimsProviders>
+
+    <ClaimsProvider>
+      <DisplayName>Facebook</DisplayName>
+      <TechnicalProfiles>
+        <TechnicalProfile Id="Facebook-OAUTH">
+          <Metadata>
+            <Item Key="client_id">facebook_clientid</Item>
+            <Item Key="scope">email public_profile</Item>
+            <Item Key="ClaimsEndpoint">https://graph.facebook.com/me?fields=id,first_name,last_name,name,email</Item>
+          </Metadata>
+        </TechnicalProfile>
+      </TechnicalProfiles>
+    </ClaimsProvider>
+
+    <ClaimsProvider>
+      <DisplayName>Local Account SignIn</DisplayName>
+      <TechnicalProfiles>
+        <TechnicalProfile Id="login-NonInteractive">
+          <Metadata>
+            <Item Key="client_id">ProxyIdentityExperienceFrameworkAppId</Item>
+            <Item Key="IdTokenAudience">IdentityExperienceFrameworkAppId</Item>
+          </Metadata>
+          <InputClaims>
+            <InputClaim ClaimTypeReferenceId="client_id" DefaultValue="ProxyIdentityExperienceFrameworkAppId" />
+            <InputClaim ClaimTypeReferenceId="resource_id" PartnerClaimType="resource" DefaultValue="IdentityExperienceFrameworkAppId" />
+          </InputClaims>
+        </TechnicalProfile>
+      </TechnicalProfiles>
+    </ClaimsProvider>
+
+    <ClaimsProvider>
+      <Domain>auth0-clienta</Domain>
+      <DisplayName>Auth0 ClientA</DisplayName>
+      <TechnicalProfiles>
+        <TechnicalProfile Id="Auth0-ClientA-OIDC">
+          <DisplayName>Auth0 ClientA Login</DisplayName>
+          <Protocol Name="OpenIdConnect"/>
+          <Metadata>
+            <Item Key="METADATA">https://dev-p1pan7dfricpbhbw.us.auth0.com/.well-known/openid-configuration</Item>
+            <Item Key="client_id">i8bkUH9vNTuRTcFzLkUfhKDcxxSH5IlD</Item>
+            <Item Key="response_types">code</Item>
+            <Item Key="scope">openid profile email</Item>
+            <Item Key="response_mode">form_post</Item>
+            <Item Key="HttpBinding">POST</Item>
+          </Metadata>
+          <CryptographicKeys>
+            <Key Id="client_secret" StorageReferenceId="B2C_1A_Auth0ClientASecret"/>
+          </CryptographicKeys>
+          <OutputClaims>
+            <OutputClaim ClaimTypeReferenceId="issuerUserId"          PartnerClaimType="sub"/>
+            <OutputClaim ClaimTypeReferenceId="authenticationSource"  DefaultValue="socialIdpAuthentication"/>
+            <OutputClaim ClaimTypeReferenceId="email"                 PartnerClaimType="email"/>
+            <OutputClaim ClaimTypeReferenceId="displayName"           PartnerClaimType="name"/>
+            <OutputClaim ClaimTypeReferenceId="identityProvider"      DefaultValue="auth0-clienta"/>
+            <OutputClaim ClaimTypeReferenceId="department"   PartnerClaimType="https://inextlabsb2ctest.b2clogin.com/department"/>
+            <OutputClaim ClaimTypeReferenceId="gender"       PartnerClaimType="https://inextlabsb2ctest.b2clogin.com/gender"/>
+            <OutputClaim ClaimTypeReferenceId="dob"          PartnerClaimType="https://inextlabsb2ctest.b2clogin.com/dob"/>
+            <OutputClaim ClaimTypeReferenceId="employeeId"   PartnerClaimType="https://inextlabsb2ctest.b2clogin.com/employeeId"/>
+            <OutputClaim ClaimTypeReferenceId="role"         PartnerClaimType="https://inextlabsb2ctest.b2clogin.com/role"/>
+            <OutputClaim ClaimTypeReferenceId="businessId"   PartnerClaimType="https://inextlabsb2ctest.b2clogin.com/businessId"/>
+            <OutputClaim ClaimTypeReferenceId="tenantId"     PartnerClaimType="https://inextlabsb2ctest.b2clogin.com/tenantId"/>
+          </OutputClaims>
+          <OutputClaimsTransformations>
+            <OutputClaimsTransformation ReferenceId="CreateAlternativeSecurityId"/>
+            <OutputClaimsTransformation ReferenceId="CreateSubjectClaimFromAlternativeSecurityId"/>
+          </OutputClaimsTransformations>
+          <UseTechnicalProfileForSessionManagement ReferenceId="SM-SocialLogin"/>
+        </TechnicalProfile>
+      </TechnicalProfiles>
+    </ClaimsProvider>
+
+  </ClaimsProviders>
+
+<UserJourneys>
+    <UserJourney Id="SignUpOrSignInWithAuth0">
+      <OrchestrationSteps>
+
+        <OrchestrationStep Order="1" Type="CombinedSignInAndSignUp" ContentDefinitionReferenceId="api.signuporsignin">
+          <ClaimsProviderSelections>
+            <ClaimsProviderSelection TargetClaimsExchangeId="Auth0ClientAExchange"/>
+          </ClaimsProviderSelections>
+        </OrchestrationStep>
+
+        <OrchestrationStep Order="2" Type="ClaimsExchange">
+          <ClaimsExchanges>
+            <ClaimsExchange Id="Auth0ClientAExchange" TechnicalProfileReferenceId="Auth0-ClientA-OIDC"/>
+          </ClaimsExchanges>
+        </OrchestrationStep>
+
+        <OrchestrationStep Order="3" Type="ClaimsExchange">
+          <ClaimsExchanges>
+            <ClaimsExchange Id="AADUserReadUsingAlternativeSecurityId" TechnicalProfileReferenceId="AAD-UserReadUsingAlternativeSecurityId-NoError"/>
+          </ClaimsExchanges>
+        </OrchestrationStep>
+
+        <OrchestrationStep Order="4" Type="ClaimsExchange">
+          <Preconditions>
+            <Precondition Type="ClaimsExist" ExecuteActionsIf="true">
+              <Value>objectId</Value>
+              <Action>SkipThisOrchestrationStep</Action>
+            </Precondition>
+          </Preconditions>
+          <ClaimsExchanges>
+            <ClaimsExchange Id="AADUserWrite" TechnicalProfileReferenceId="AAD-UserWriteUsingAlternativeSecurityId"/>
+          </ClaimsExchanges>
+        </OrchestrationStep>
+
+        <OrchestrationStep Order="5" Type="SendClaims" CpimIssuerTechnicalProfileReferenceId="JwtIssuer"/>
+
+      </OrchestrationSteps>
+      <ClientDefinition ReferenceId="DefaultWeb"/>
+    </UserJourney>
+  </UserJourneys>
+
+</TrustFrameworkPolicy>
