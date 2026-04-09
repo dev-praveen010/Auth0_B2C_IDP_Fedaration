@@ -9,6 +9,7 @@ A production-ready React application with Auth0 authentication, built with Vite.
 - **Session Persistence** — uses `localStorage` so sessions survive page refresh
 - **User Profile Dashboard** — displays avatar, name, email, and Auth0 ID
 - **Responsive Design** — works on desktop and mobile
+- **B2C Authorization Code Flow** — browser front-channel + Python backend token exchange
 
 ---
 
@@ -61,12 +62,20 @@ Scroll to the bottom and click **Save Changes**.
    VITE_AUTH0_CLIENT_ID=aBcDeFgHiJkLmNoPqRsTuVwXyZ012345
    VITE_AUTH0_CALLBACK_URL=http://localhost:5173/callback
    VITE_AUTH0_AUDIENCE=https://your-api-identifier
+   VITE_B2C_AUTHORIZE_ENDPOINT=https://<tenant>.b2clogin.com/<tenant>.onmicrosoft.com/<policy>/oauth2/v2.0/authorize
+   VITE_B2C_CLIENT_ID=<your-b2c-client-id>
+   VITE_B2C_REDIRECT_URI=http://localhost:5173/callback
+   VITE_B2C_SCOPE=openid
    ```
 
    - `VITE_AUTH0_DOMAIN` — your Auth0 tenant domain (from Settings → Domain)
    - `VITE_AUTH0_CLIENT_ID` — the Client ID (from Settings → Client ID)
    - `VITE_AUTH0_CALLBACK_URL` — must match one of the Allowed Callback URLs
    - `VITE_AUTH0_AUDIENCE` — *(optional)* only needed if you are calling a protected API
+   - `VITE_B2C_AUTHORIZE_ENDPOINT` — B2C `/authorize` endpoint for your policy
+   - `VITE_B2C_CLIENT_ID` — B2C app registration client ID (public in front-channel)
+   - `VITE_B2C_REDIRECT_URI` — callback URL for B2C code return
+   - `VITE_B2C_SCOPE` — usually `openid`
 
 > **Important:** Never commit your `.env` file to version control. Add it to `.gitignore`.
 
@@ -78,11 +87,21 @@ Scroll to the bottom and click **Save Changes**.
 # Install dependencies
 npm install
 
+# In a second terminal, run the Python backend from workspace root
+# cd ../backend
+# python -m venv .venv
+# .venv\Scripts\activate
+# pip install -r requirements.txt
+# copy .env.example .env  (then fill B2C secrets)
+# python app.py
+
 # Start the dev server
 npm run dev
 ```
 
 The app will open at [http://localhost:5173](http://localhost:5173).
+
+Backend will run at `http://localhost:8000` and Vite proxies `/api/*` to it during development.
 
 ---
 
@@ -124,12 +143,14 @@ my-app/
 5. **Logout** — The `LogoutButton` calls `logout()`, which clears the local session and redirects through Auth0's logout endpoint.
 
 ### Azure AD B2C Federated Flow
-1. **Connect to Insights AI** — On the Dashboard, click "Connect to Insights AI" after logging in.
-2. **B2C Login** — The button calls `loginWithPopup()` with the `connection: 'insights-ai-b2c'` parameter.
-3. **Auth0 → B2C** — Auth0 recognizes the connection and redirects the user directly to Azure AD B2C custom policy.
-4. **B2C Auth** — User authenticates with B2C inside the popup.
-5. **Popup Complete** — Auth0 finishes the enterprise login flow in the popup and closes it.
-6. **Token Access** — The app calls `getAccessTokenSilently()` and stores the returned token in component state.
+1. **Front-channel (Browser)** — On the Dashboard, click "Connect to Insights AI".
+2. **B2C Login** — Browser redirects to B2C `/authorize` with `client_id`, `redirect_uri`, `scope`, `state`.
+3. **Code Callback** — B2C redirects back to `/callback?code=...&state=...`.
+4. **Conditional Callback Handling** — Callback page checks state:
+   - Matching state (B2C flow) => calls backend `/api/b2c/token-exchange`
+   - Non-matching state => treated as Auth0 SDK callback
+5. **Back-channel (Backend)** — Python backend POSTs to B2C `/token` with `client_id`, `client_secret`, `code`, `redirect_uri`.
+6. **Result** — Backend returns token payload to frontend; app stores connection status and tokens.
 
 ---
 
@@ -147,6 +168,20 @@ If you want to enable the "Connect Insights AI" button (federated B2C login thro
    - **Client Secret:** Your B2C app registration's Client Secret
 4. Go to the **Applications** tab and enable your React app
 5. Keep your popup-based app flow pointed at Auth0. Do not configure your React app to receive a direct B2C callback for this integration.
+
+## 6. Python Backend Configuration
+
+Create backend env from [../backend/.env.example](../backend/.env.example):
+
+```env
+PORT=8000
+B2C_TOKEN_ENDPOINT=https://<tenant>.b2clogin.com/<tenant>.onmicrosoft.com/<policy>/oauth2/v2.0/token
+B2C_CLIENT_ID=<your-b2c-client-id>
+B2C_CLIENT_SECRET=<your-b2c-client-secret>
+B2C_SCOPE=openid
+```
+
+`B2C_CLIENT_SECRET` must never be exposed in frontend code.
 
 ---
 

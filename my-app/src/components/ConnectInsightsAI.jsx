@@ -1,90 +1,131 @@
-import { useState } from 'react';
-import { useAuth0 } from '@auth0/auth0-react';
+import { useState } from "react";
+import { useAuth0 } from "@auth0/auth0-react";
+import { generateCodeChallenge, generateCodeVerifier } from "../utils/pkce";
 
 /**
- * ConnectInsightsAI Component
- *
- * Provides a button to establish a federated connection with Azure AD B2C
- * through Auth0 using a popup instead of navigating the main app.
- *
- * How it works:
- * 1. User clicks "Connect to Insights AI" button
- * 2. loginWithPopup() opens a popup window with Auth0's hosted login
- * 3. Auth0 recognizes the "insights-ai-b2c" connection and redirects user to B2C
- * 4. User authenticates with B2C in the popup and Auth0 completes the flow internally
- * 5. Popup closes and we call getAccessTokenSilently() to retrieve the token
- * 6. Token is stored in state and component shows "✅ Connected" status
- * 7. Dashboard state is preserved and no app-level B2C callback page is used
- *
- * Environment: Uses Auth0's "insights-ai-b2c" enterprise OIDC connection
+ * Starts a direct Azure AD B2C Authorization Code flow (front-channel only).
+ * The sensitive code exchange (client_secret usage) is performed by the
+ * Python backend from the /callback page.
  */
 const ConnectInsightsAI = () => {
-  const { loginWithPopup, getAccessTokenSilently, isAuthenticated } = useAuth0();
-  // Read persisted state from localStorage so the connected flag survives
-  // the Auth0-triggered re-render that happens after loginWithPopup().
+  const { isAuthenticated } = useAuth0();
+
+  const b2cAuthorizeEndpoint = import.meta.env.VITE_B2C_AUTHORIZE_ENDPOINT;
+  const b2cClientId = import.meta.env.VITE_B2C_CLIENT_ID;
+  const b2cScope = import.meta.env.VITE_B2C_SCOPE || "openid";
+  const policyName = import.meta.env.VITE_POLICY_NAME || "B2C_1A_SIGNUP_SIGNIN";
+  const callbackUrl =
+    import.meta.env.VITE_B2C_REDIRECT_URI ||
+    `${window.location.origin}/callback`;
+
   const [isConnected, setIsConnected] = useState(
-    () => localStorage.getItem('insights_ai_connected') === 'true'
+    () => localStorage.getItem("insights_ai_connected") === "true",
   );
   const [isConnecting, setIsConnecting] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
-  const [b2cToken, setB2cToken] = useState(
-    () => localStorage.getItem('insights_ai_token') || null
-  );
-  /**
-   * Handle the connection to Insights AI via B2C federated auth
-   */
+  const [apiResult, setApiResult] = useState(null);
+  const [apiError, setApiError] = useState(null);
+  const [apiLoading, setApiLoading] = useState(false);
+  const [isDisconnecting, setIsDisconnecting] = useState(false);
+
+  const callExternalApi = async () => {
+    setApiLoading(true);
+    setApiError(null);
+    setApiResult(null);
+    try {
+      const sessionId = sessionStorage.getItem("b2c_session_id");
+      if (!sessionId) {
+        throw new Error("No active B2C session. Please reconnect.");
+      }
+      const response = await fetch("/api/external", {
+        headers: { "X-Session-Id": sessionId },
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error_description || data?.error || "API call failed.");
+      }
+      setApiResult(data);
+    } catch (err) {
+      setApiError(err.message);
+    } finally {
+      setApiLoading(false);
+    }
+  };
+
+  const createRandomState = () => {
+    const bytes = new Uint8Array(16);
+    window.crypto.getRandomValues(bytes);
+    return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  };
+
   const handleConnect = async () => {
-    setIsConnecting(true);
     setErrorMessage(null);
+    setIsConnecting(true);
 
     try {
-      /**
-       * loginWithPopup() with specific Auth0 connection:
-       * - Opens a modal/popup (doesn't navigate away)
-       * - Routes through Auth0 to the "insights-ai-b2c" enterprise connection
-       * - Which points to Azure AD B2C custom policy
-       * - User authenticates, popup closes, returns control to this component
-       * - Auth0 handles the callback in the popup, so the app should not use
-       *   a dedicated /auth/callback route for this flow
-       */
-      await loginWithPopup({
-        authorizationParams: {
-          connection: 'insights-ai-b2c',
-        },
-      });
-
-      /**
-       * After successful popup auth, get the token issued for this session.
-       * In an Auth0-brokered enterprise flow this token is retrieved through
-       * Auth0, not by reading an id_token from an app callback URL.
-       */
-      const token = await getAccessTokenSilently({
-        authorizationParams: {
-          connection: 'insights-ai-b2c',
-        },
-      });
-
-      // Persist to localStorage so state survives Auth0's post-popup re-render
-      localStorage.setItem('insights_ai_connected', 'true');
-      localStorage.setItem('insights_ai_token', token);
-      setB2cToken(token);
-      setIsConnected(true);
-
-      console.log('✅ Successfully connected to Insights AI');
-      console.log('B2C JWT Token:', token);
-    } catch (error) {
-      console.error('❌ Insights AI connection failed:', error);
-
-      // Check if user closed the popup
-      if (error?.error === 'popup_closed') {
-        setErrorMessage('Popup was closed. Please try again.');
-      } else {
-        setErrorMessage(
-          error?.error_description || 'Connection failed. Please try again.'
+      if (!b2cAuthorizeEndpoint || !b2cClientId) {
+        throw new Error(
+          "Missing VITE_B2C_AUTHORIZE_ENDPOINT or VITE_B2C_CLIENT_ID in .env.",
         );
       }
+
+      const verifier = generateCodeVerifier();
+      const challenge = await generateCodeChallenge(verifier);
+
+      const state = createRandomState();
+      sessionStorage.setItem("b2c_oauth_state", state);
+      sessionStorage.setItem("b2c_oauth_redirect_uri", callbackUrl);
+
+      sessionStorage.setItem('code_verifier', verifier);
+
+      const params = new URLSearchParams({
+        p: policyName,
+        client_id: b2cClientId,
+        nonce: "defaultNonce",
+        redirect_uri: callbackUrl,
+        scope: b2cScope,
+        response_type: "code",
+        response_mode: "query",
+        state: state
+      });
+      console.log('params',params.toString());
+      window.location.assign(`${b2cAuthorizeEndpoint}?${params.toString()}`);
+    } catch (error) {
+      console.error("B2C authorization redirect failed:", error);
+      setErrorMessage(error?.message || "Connection failed. Please try again.");
     } finally {
       setIsConnecting(false);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    setErrorMessage(null);
+    setApiError(null);
+    setApiResult(null);
+    setIsDisconnecting(true);
+
+    const sessionId = sessionStorage.getItem("b2c_session_id");
+
+    try {
+      if (sessionId) {
+        await fetch("/api/b2c/disconnect", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ session_id: sessionId }),
+        });
+      }
+    } catch {
+      // Local cleanup still ensures the browser disconnects from Insights AI state.
+    } finally {
+      localStorage.removeItem("insights_ai_connected");
+      sessionStorage.removeItem("b2c_session_id");
+      sessionStorage.removeItem("b2c_oauth_state");
+      sessionStorage.removeItem("b2c_oauth_redirect_uri");
+      sessionStorage.removeItem("code_verifier");
+      setIsConnected(false);
+      setIsDisconnecting(false);
     }
   };
 
@@ -105,11 +146,8 @@ const ConnectInsightsAI = () => {
           </p>
         </div>
       </div>
-      <a href="https://inextlabsb2ctest.b2clogin.com/inextlabsb2ctest.onmicrosoft.com/oauth2/v2.0/authorize?p=B2C_1A_SIGNUP_SIGNIN&client_id=99228fc5-ab7b-4e0b-b1b8-975255d0566e&nonce=defaultNonce&redirect_uri=http%3A%2F%2Flocalhost%3A5173%2Fcallback&scope=openid&response_type=id_token&response_mode=fragment">
-        connect
-      </a>
-        {/* <a href='https://inextlabsb2ctest.b2clogin.com/inextlabsb2ctest.onmicrosoft.com/oauth2/v2.0/authorize?p=B2C_1A_SIGNUP_SIGNIN&client_id=99228fc5-ab7b-4e0b-b1b8-975255d0566e&nonce=defaultNonce&redirect_uri=http%3A%2F%2Flocalhost%3A5173%2Fcallback&scope=openid&response_type=id_token' >connect</a> */}
-      {/* <div className="integrations-action">
+
+      <div className="integrations-action">
         {!isConnected ? (
           <>
             <button
@@ -120,7 +158,7 @@ const ConnectInsightsAI = () => {
               {isConnecting ? (
                 <>
                   <span className="spinner-dot" />
-                  Connecting…
+                  Redirecting…
                 </>
               ) : (
                 <>
@@ -135,16 +173,42 @@ const ConnectInsightsAI = () => {
           </>
         ) : (
           <div className="insights-success">
-            <span className="success-icon">✅</span>
-            <span>Connected to Insights AI</span>
-            {b2cToken && (
-              <span className="token-status">
-                (Token stored in component state)
-              </span>
+            <div>
+              <span className="success-icon">✅</span>
+              <span>Connected to Insights AI</span>
+            </div>
+            <button
+              className="btn btn-primary"
+              onClick={callExternalApi}
+              disabled={apiLoading}
+              style={{ marginTop: "0.75rem" }}
+            >
+              {apiLoading ? "Calling API…" : "Test External API"}
+            </button>
+            <button
+              className="btn btn-outline"
+              onClick={handleDisconnect}
+              disabled={isDisconnecting}
+              style={{ marginTop: "0.5rem" }}
+            >
+              {isDisconnecting ? "Disconnecting…" : "Disconnect Insights AI"}
+            </button>
+            {apiError && (
+              <div className="insights-error" style={{ marginTop: "0.5rem" }}>
+                {apiError}
+              </div>
+            )}
+            {apiResult && (
+              <pre
+                className="json-block"
+                style={{ marginTop: "0.5rem", textAlign: "left" }}
+              >
+                {JSON.stringify(apiResult, null, 2)}
+              </pre>
             )}
           </div>
         )}
-      </div> */}
+      </div>
     </div>
   );
 };

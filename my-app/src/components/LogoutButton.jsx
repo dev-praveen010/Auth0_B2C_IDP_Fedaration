@@ -16,9 +16,10 @@ const LogoutButton = () => {
   return (
     <button
       className="btn btn-outline"
-      onClick={() =>
+      onClick={() =>{
+        localStorage.clear();
         logout({ logoutParams: { returnTo: window.location.origin } })
-      }
+      }}
     >
       Log Out
     </button>
